@@ -1,17 +1,4 @@
-"""
-Module: client.py
-Secure Messaging Client
-
-Responsibilities:
-  - Register with the CA and obtain a signed certificate
-  - Verify the server's certificate before connecting
-  - Perform NTRU-based KEM key exchange with the server
-  - Encrypt messages using Hill cipher (transit)
-  - Support session key rotation
-"""
-
 import time
-import hashlib
 import uuid
 
 from asymmetric.ntru import NTRU
@@ -27,27 +14,10 @@ def _session_key_to_vigenere(shared_bytes: bytes) -> str:
     return "".join(chr(b % 26 + ord('A')) for b in shared_bytes[:10])
 
 
-# ── Client ─────────────────────────────────────────────────────────────────────
+# Client
 
 class Client:
-    """
-    Secure Messaging Client.
-
-    Flow
-    ----
-    1. __init__   : generate NTRU key pair, register with CA.
-    2. connect()  : verify server cert, do KEM exchange, establish session.
-    3. send()     : Hill-encrypt a message, pass to server.receive_message().
-    4. rotate()   : generate new KEM ciphertext, notify server.
-    """
-
     def __init__(self, username: str, ca):
-        """
-        Parameters
-        ----------
-        username : str  — display name (e.g. "alice")
-        ca       : CertificateAuthority instance
-        """
         self.username = username
         self._ca      = ca
 
@@ -68,40 +38,28 @@ class Client:
 
         print(f"[CLIENT:{username}] Registered. Certificate serial: {self._certificate['serial']}")
 
-    # ── Certificate ────────────────────────────────────────────────────────────
+    # Certificate 
 
     @property
     def certificate(self) -> dict:
         return self._certificate
 
-    # ── Connect to Server ──────────────────────────────────────────────────────
+    # Connect to Server
 
     def connect(self, server) -> bool:
-        """
-        Establish a secure session with *server*.
-
-        Steps
-        -----
-        1. Fetch server certificate.
-        2. Verify it with the CA.
-        3. Perform NTRU KEM key exchange.
-        4. Store session ID and shared secret.
-
-        Returns True on success, False on failure.
-        """
         print(f"\n[CLIENT:{self.username}] Connecting to server ...")
 
-        # ── Step 1 & 2 : Verify server certificate ────────────────────────────
+        # Step 1 & 2 : Verify server certificate 
         server_cert = server.certificate
         print(f"[CLIENT:{self.username}] Verifying server certificate (serial={server_cert['serial']}) ...")
 
         if not self._ca.verify_certificate(server_cert):
-            print(f"[CLIENT:{self.username}] ✗ Server certificate INVALID — connection aborted.")
+            print(f"[CLIENT:{self.username}] Server certificate INVALID — connection aborted.")
             return False
 
-        print(f"[CLIENT:{self.username}] ✓ Server certificate verified.")
+        print(f"[CLIENT:{self.username}] Server certificate verified.")
 
-        # ── Step 3 : KEM encapsulation using server's public key ──────────────
+        # Step 3 : KEM encapsulation using server's public key 
         # Build a temporary NTRU+KEM using the SERVER's public key
         temp_ntru = NTRU(N=17, q=127, p=3)
         temp_ntru.keygen()                          # gives temp_ntru its own f, f_p_inv
@@ -111,29 +69,22 @@ class Client:
         self._shared_bytes = shared_bytes
         self._kem_ctx      = temp_kem
 
-        # ── Step 4 : Agree on session ID ──────────────────────────────────────
+        # Step 4 : Agree on session ID 
         self._session_id = str(uuid.uuid4())[:8]    # short 8-char ID for readability
         self._server     = server
 
-        # ── Step 5 : Send KEM ciphertext to server ────────────────────────────
+        # Step 5 : Send KEM ciphertext to server 
         server.complete_key_exchange(kem_ciphertext, self._session_id)
 
-        print(f"[CLIENT:{self.username}] ✓ Session established. ID='{self._session_id}'")
+        print(f"[CLIENT:{self.username}] Session established. ID='{self._session_id}'")
         print(f"[CLIENT:{self.username}] Shared secret (first 6 bytes): {shared_bytes[:6].hex()} ...")
         return True
 
-    # ── Send Message ───────────────────────────────────────────────────────────
+    # Send Message
 
     def send(self, message: str):
-        """
-        Encrypt *message* with Hill cipher and deliver to the server.
-
-        Parameters
-        ----------
-        message : str — plaintext message (letters only; others stripped by Hill)
-        """
         if self._session_id is None or self._server is None:
-            print(f"[CLIENT:{self.username}] ✗ Not connected. Call connect() first.")
+            print(f"[CLIENT:{self.username}] Not connected. Call connect() first.")
             return
 
         print(f"\n[CLIENT:{self.username}] Sending: '{message}'")
@@ -149,15 +100,11 @@ class Client:
             hill_ciphertext= hill_ciphertext,
         )
 
-    # ── Key Rotation ───────────────────────────────────────────────────────────
+    # Key Rotation
 
     def rotate_session_key(self):
-        """
-        Generate a new shared secret and notify the server.
-        Called periodically to limit the damage of a compromised session key.
-        """
         if self._session_id is None or self._server is None:
-            print(f"[CLIENT:{self.username}] ✗ Not connected.")
+            print(f"[CLIENT:{self.username}] Not connected.")
             return
 
         print(f"\n[CLIENT:{self.username}] Rotating session key ...")
@@ -175,5 +122,5 @@ class Client:
         # Notify server
         self._server.rotate_session_key(self._session_id, new_ciphertext)
 
-        print(f"[CLIENT:{self.username}] ✓ Session key rotated.")
+        print(f"[CLIENT:{self.username}] Session key rotated.")
         print(f"[CLIENT:{self.username}] New shared secret (first 6 bytes): {new_shared[:6].hex()} ...")
