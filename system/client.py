@@ -10,7 +10,7 @@ HILL_KEY = [[3, 3], [2, 5]]
 
 
 def _session_key_to_vigenere(shared_bytes: bytes) -> str:
-    """Derive a Vigenere-compatible key from shared secret (mirrors server logic)."""
+    
     return "".join(chr(b % 26 + ord('A')) for b in shared_bytes[:10])
 
 

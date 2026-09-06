@@ -101,7 +101,7 @@ class CertificateAuthority:
         )
         if not _verify_sig(field_hash, cert["signature"], self._ca_secret):
             print(f"[CA] Certificate serial={serial} has INVALID signature.")
-            return False
+            return FalseAA
 
         print(f"[CA] Certificate serial={serial} subject='{cert['subject']}' is VALID.")
         return True
